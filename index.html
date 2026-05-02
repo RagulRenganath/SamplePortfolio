@@ -1,17 +1,278 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#050508" />
-    <title>Studio — Creative Technology</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Matter | Immersive Portfolio</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- ES Module Shims for robust import map support -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    
+    <!-- Import Map for React, Three.js, R3F, and GSAP -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "three": "https://esm.sh/three@0.160.0",
+            "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.12?external=react,react-dom,three",
+            "@react-three/drei": "https://esm.sh/@react-three/drei@9.96.1?external=react,react-dom,three,@react-three/fiber",
+            "gsap": "https://esm.sh/gsap@3.12.5"
+        }
+    }
+    </script>
+    
+    <!-- Babel standalone for in-browser JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
     <style>
-      /* Block FOUC before React hydrates */
-      html { background: #050508; }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background-color: #050505; cursor: none; }
+        #root { width: 100%; height: 100%; }
+        /* Custom font for cinematic feel */
+        @import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Inter:wght@300;400&display=swap');
+        .font-display { font-family: 'Syncopate', sans-serif; }
+        .font-body { font-family: 'Inter', sans-serif; }
     </style>
-  </head>
-  <body>
+</head>
+<body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+
+    <script type="text/babel" data-type="module">
+        import React, { useRef, useEffect, useState, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
+        import { shaderMaterial } from '@react-three/drei';
+        import * as THREE from 'three';
+        import gsap from 'gsap';
+
+        // 1. GLSL SHADERS
+        const vertexShader = `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `;
+
+        const fragmentShader = `
+          uniform float uTime;
+          uniform vec2 uMouse;
+          uniform vec2 uResolution;
+          
+          varying vec2 vUv;
+
+          // 2D Noise
+          vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+          vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+          vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+          
+          float snoise(vec2 v) {
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v -   i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod289(i);
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ;
+            m = m*m ;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+          }
+
+          void main() {
+            vec2 st = gl_FragCoord.xy / uResolution.xy;
+            st.x *= uResolution.x / uResolution.y;
+
+            float dist = distance(st, uMouse);
+            float mouseEffect = smoothstep(0.4, 0.0, dist) * 0.6;
+
+            vec2 pos = st * 2.5;
+            float n = snoise(pos + uTime * 0.15 + mouseEffect);
+            float n2 = snoise(pos + n * 1.5 - uTime * 0.1);
+            
+            vec3 color = vec3(0.03, 0.03, 0.04); 
+            color += vec3(0.12, 0.14, 0.18) * smoothstep(0.0, 1.0, n2);
+            color += vec3(0.4, 0.45, 0.5) * mouseEffect * n; 
+
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `;
+
+        const FluidMaterial = shaderMaterial(
+          {
+            uTime: 0,
+            uMouse: new THREE.Vector2(0, 0),
+            uResolution: new THREE.Vector2(1, 1),
+          },
+          vertexShader,
+          fragmentShader
+        );
+
+        extend({ FluidMaterial });
+
+        // 2. CANVAS BACKGROUND
+        const WebGLBackground = () => {
+          const materialRef = useRef();
+          const { size, viewport } = useThree();
+
+          useFrame((state) => {
+            if (materialRef.current) {
+              materialRef.current.uTime = state.clock.elapsedTime;
+              materialRef.current.uMouse.lerp(
+                new THREE.Vector2(
+                  (state.pointer.x * 0.5 + 0.5) * (size.width / size.height),
+                  state.pointer.y * 0.5 + 0.5
+                ),
+                0.05
+              );
+              materialRef.current.uResolution.set(size.width, size.height);
+            }
+          });
+
+          return (
+            <mesh>
+              <planeGeometry args={[viewport.width, viewport.height, 1, 1]} />
+              <fluidMaterial ref={materialRef} />
+            </mesh>
+          );
+        };
+
+        // 3. GLOBAL CUSTOM CURSOR
+        const CustomCursor = () => {
+          const cursorRef = useRef(null);
+          const followerRef = useRef(null);
+
+          useEffect(() => {
+            const moveCursor = (e) => {
+              gsap.set(cursorRef.current, { x: e.clientX, y: e.clientY });
+              gsap.to(followerRef.current, {
+                x: e.clientX,
+                y: e.clientY,
+                duration: 0.6,
+                ease: "power3.out"
+              });
+            };
+
+            const handleHover = () => {
+              gsap.to(followerRef.current, { scale: 1.8, borderColor: '#ffffff', backgroundColor: 'rgba(255,255,255,0.1)', duration: 0.3 });
+            };
+            const handleLeave = () => {
+              gsap.to(followerRef.current, { scale: 1, borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'transparent', duration: 0.3 });
+            };
+
+            window.addEventListener('mousemove', moveCursor);
+            
+            // Re-bind hover states periodically in case DOM changes
+            const bindHover = () => {
+                const interactables = document.querySelectorAll('a, button, .interactive');
+                interactables.forEach(el => {
+                  el.addEventListener('mouseenter', handleHover);
+                  el.addEventListener('mouseleave', handleLeave);
+                });
+            }
+            bindHover();
+
+            return () => {
+              window.removeEventListener('mousemove', moveCursor);
+            };
+          }, []);
+
+          return (
+            <React.Fragment>
+              <div 
+                ref={cursorRef} 
+                className="fixed top-0 left-0 w-2 h-2 bg-white rounded-full pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 mix-blend-difference"
+              />
+              <div 
+                ref={followerRef} 
+                className="fixed top-0 left-0 w-12 h-12 border border-white/30 rounded-full pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-colors"
+              />
+            </React.Fragment>
+          );
+        };
+
+        // 4. DOM OVERLAY
+        const DOMOverlay = () => {
+          const headerRef = useRef(null);
+
+          useEffect(() => {
+            const texts = headerRef.current.querySelectorAll('.reveal-text');
+            gsap.fromTo(texts, 
+              { y: 150, opacity: 0, rotateZ: 5 },
+              { 
+                y: 0, 
+                opacity: 1, 
+                rotateZ: 0,
+                duration: 1.5, 
+                stagger: 0.15, 
+                ease: "power4.out",
+                delay: 0.2 
+              }
+            );
+          }, []);
+
+          return (
+            <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-center p-6 md:p-12 text-white font-body">
+              <nav className="absolute top-0 left-0 w-full p-8 flex justify-between pointer-events-auto mix-blend-difference">
+                <a href="#" className="font-bold tracking-[0.2em] uppercase text-xs interactive">Studio</a>
+                <a href="#" className="font-bold tracking-[0.2em] uppercase text-xs interactive">Menu</a>
+              </nav>
+
+              <div ref={headerRef} className="pointer-events-auto w-full max-w-7xl mx-auto mix-blend-difference">
+                <div className="overflow-hidden mb-1">
+                  <h1 className="reveal-text font-display text-6xl md:text-[8rem] lg:text-[10rem] font-bold uppercase leading-none tracking-tighter">
+                    Digital
+                  </h1>
+                </div>
+                <div className="overflow-hidden mb-2 flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
+                  <h1 className="reveal-text font-display text-6xl md:text-[8rem] lg:text-[10rem] font-bold uppercase leading-none tracking-tighter text-transparent" style={{ WebkitTextStroke: '2px white' }}>
+                    Matter
+                  </h1>
+                  <p className="reveal-text text-xs md:text-sm max-w-xs uppercase tracking-[0.1em] leading-relaxed opacity-80 mt-4 md:mt-0 interactive">
+                    Award-winning creative engineering and immersive web experiences.
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        // 5. APP COMPONENT
+        const App = () => {
+          return (
+            <div className="relative w-full h-full">
+              <CustomCursor />
+              
+              <div className="absolute inset-0 z-0 pointer-events-auto">
+                <Canvas 
+                  dpr={Math.min(window.devicePixelRatio, 2)} 
+                  gl={{ antialias: false, alpha: false, powerPreference: "high-performance" }}
+                >
+                  <WebGLBackground />
+                </Canvas>
+              </div>
+
+              <DOMOverlay />
+            </div>
+          );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
 </html>
