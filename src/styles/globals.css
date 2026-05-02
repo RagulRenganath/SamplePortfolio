@@ -1,0 +1,105 @@
+/* ─────────────────────────────────────────────────────────────────
+   globals.css
+   
+   Design token architecture:
+   - --font-display  → brutalist heavy display (Bebas Neue / Anton)
+   - --font-body     → refined grotesque for UI text
+   - Colour tokens baked into :root
+   
+   Google Fonts import at the top — swap these for local woff2
+   files in production for best performance.
+───────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=DM+Sans:ital,opsz,wght@0,9..40,200;0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=Space+Mono:wght@400;700&display=swap');
+
+/* ── Tokens ──────────────────────────────────────────────────── */
+:root {
+  --font-display: 'Anton', 'Impact', sans-serif;
+  --font-body:    'DM Sans', 'Helvetica Neue', sans-serif;
+  --font-mono:    'Space Mono', 'Courier New', monospace;
+
+  --col-bg:       #050508;
+  --col-surface:  #0d0e12;
+  --col-ink:      rgba(232, 232, 224, 0.95);
+  --col-ink-dim:  rgba(232, 232, 224, 0.45);
+  --col-ink-faint:rgba(232, 232, 224, 0.15);
+  --col-accent:   #b8c8f0;   /* cool blue-white metal */
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-expo:  cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+/* ── Hard reset ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin:     0;
+  padding:    0;
+}
+
+html, body {
+  width:      100%;
+  height:     100%;
+  overflow:   hidden;           /* no scroll on the main frame */
+  background: var(--col-bg);
+  color:      var(--col-ink);
+}
+
+/* ── App shell ───────────────────────────────────────────────── */
+.app-root {
+  position: relative;
+  width:    100vw;
+  height:   100vh;
+  overflow: hidden;
+}
+
+/* ── Canvas wrapper — BELOW the DOM UI, no pointer events ────── */
+.canvas-wrapper {
+  position:       fixed;
+  inset:          0;
+  z-index:        0;
+  pointer-events: none;  /* DOM overlay handles interaction */
+}
+
+/* Give pointer events back to the r3f canvas for 3D raycasting */
+.canvas-wrapper canvas {
+  pointer-events: auto;
+  display:        block;
+}
+
+/* ── Typography base ─────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 900;
+  line-height: 0.92;
+  color:       var(--col-ink);
+}
+
+p, span, a, li {
+  font-family: var(--font-body);
+  font-weight: 300;
+  line-height: 1.6;
+  color:       var(--col-ink);
+}
+
+a {
+  text-decoration: none;
+  cursor: none;   /* custom cursor handles this */
+}
+
+/* ── Selection ───────────────────────────────────────────────── */
+::selection {
+  background: rgba(184, 200, 240, 0.25);
+  color:      var(--col-ink);
+}
+
+/* ── Scrollbar (for inner scroll containers) ─────────────────── */
+::-webkit-scrollbar        { width: 2px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--col-ink-faint); border-radius: 2px; }
+
+/* ── Cursor ring hover state (toggled by JS class) ───────────── */
+body.cursor-hovering .cursor-ring {
+  width:        60px !important;
+  height:       60px !important;
+  border-color: rgba(184, 200, 240, 0.8) !important;
+}
